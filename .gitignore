@@ -1,0 +1,37 @@
+.DS_Store
+._*
+
+# Secrets
+
+.env
+
+# Build output
+
+.nuxt
+.output
+
+# Dependencies
+
+node_modules
+.yarn/install-state.gz
+
+# Coding helper files
+
+.copilot
+.github/instructions/
+.vscode
+
+# Vue / TypeScript
+
+.coverage_ts
+.quasar
+.vite
+node_modules
+vue/dist
+
+# Other
+
+cloc.md
+TODO.md
+.tmp_data/
+.tmp_legacy_files/
