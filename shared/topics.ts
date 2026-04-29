@@ -32,8 +32,11 @@ export const TOPICS: Topic[] = [
     tools: ["search_vision", "get_vision_article", "get_vision_overview"],
     model: "gpt-4.1-mini",
     constraint:
-      "The user is asking about the HiPEAC Vision strategic documents. " +
-      "Always search Vision first. Ground every answer in Vision content and cite sources.",
+      "Answer questions about the HiPEAC Vision strategic documents. " +
+      "Always search Vision first. " +
+      "If search_vision returns 0 results, retry with 2–3 alternative queries describing what the term means or relates to — never give up after one attempt. " +
+      "If search_vision returns is_fallback=true, call get_vision_article on the returned slug before answering — the preview alone is not enough. " +
+      "Concepts often span multiple Vision editions; cross-edition references are part of the answer, not an absence of information.",
     examples: [
       "What are the key recommendations for European computing research?",
       "What does the Vision say about AI and hardware co-design?",
@@ -51,12 +54,12 @@ export const TOPICS: Topic[] = [
     tools: ["search_members", "get_metadata"],
     model: "gpt-4.1-nano",
     constraint:
-      "The user is asking about the HiPEAC research network — members, institutions, and research areas. " +
-      "Call get_metadata ONCE to get the full list of topics and application areas with their numeric IDs. Do not call it again. " +
-      "Find the topic whose name best matches the user's request and pass its ID in topic_ids. " +
-      "Then call search_members with those topic_ids plus any other filters (countries, etc.) and always pass limit=50. " +
-      "NEVER set the query parameter to a research topic or keyword — it only searches person names and emails. Only use query when the user mentions a specific person's name. " +
-      "If the result is empty, use the topic list you already have to suggest related alternatives and offer to search again.",
+      "Answer questions about the HiPEAC research network — members, institutions, and research areas. " +
+      "Call get_metadata ONCE to get the full list of topics and application areas with their numeric IDs; do not call it again. " +
+      "Match the user's research area to a topic by name and pass its ID in topic_ids when calling search_members. " +
+      "Always pass limit=50 to search_members. " +
+      "The query parameter searches person names and emails only — never use it for research topics or keywords. " +
+      "If results are empty, suggest related topics from the metadata list and offer to search again.",
     examples: [
       "Who are the HiPEAC members working on RISC-V in Spain?",
       "Which italian universities are part of the HiPEAC network?",
@@ -74,7 +77,7 @@ export const TOPICS: Topic[] = [
     tools: ["get_events", "search_event"],
     model: "gpt-4.1-nano",
     constraint:
-      "The user is asking about HiPEAC events (conferences, workshops, schools). " +
+      "Answer questions about HiPEAC events — conferences, workshops, and summer schools. " +
       "Use get_events to list upcoming events and search_event for questions about a specific event.",
     examples: [
       "What are the upcoming HiPEAC events?",
