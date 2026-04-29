@@ -52,7 +52,11 @@ export const TOPICS: Topic[] = [
     model: "gpt-4.1-nano",
     constraint:
       "The user is asking about the HiPEAC research network — members, institutions, and research areas. " +
-      "Use search_members and get_metadata to find relevant information.",
+      "Call get_metadata ONCE to get the full list of topics and application areas with their numeric IDs. Do not call it again. " +
+      "Find the topic whose name best matches the user's request and pass its ID in topic_ids. " +
+      "Then call search_members with those topic_ids plus any other filters (countries, etc.) and always pass limit=50. " +
+      "NEVER set the query parameter to a research topic or keyword — it only searches person names and emails. Only use query when the user mentions a specific person's name. " +
+      "If the result is empty, use the topic list you already have to suggest related alternatives and offer to search again.",
     examples: [
       "Who are the HiPEAC members working on RISC-V in Spain?",
       "Which italian universities are part of the HiPEAC network?",

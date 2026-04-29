@@ -137,6 +137,10 @@ export default defineLazyEventHandler(async () => {
     }
     const system = `${personaSystem}\n\n${constraint}`;
     const tools = toolsByTopic[topicDef.key];
+    // Network topic: force sequential tool calls so the model sees get_metadata
+    // results before calling search_members. Without this, the model calls both
+    // in parallel and halluccinates topic IDs it hasn't seen yet.
+    const parallelToolCalls = topicDef.key !== "network";
     // --- Stream ---
     const result = streamText({
       model: openai(modelId),
@@ -144,6 +148,18 @@ export default defineLazyEventHandler(async () => {
       messages: await convertToModelMessages(messages),
       tools,
       stopWhen: stepCountIs(5),
+      providerOptions: { openai: { parallelToolCalls } },
+      onStepFinish: (step) => {
+        if (import.meta.dev) {
+          for (const part of step.toolCalls ?? []) {
+            console.log(`[chat:tool-call] ${part.toolName}`, JSON.stringify(part.input, null, 2));
+          }
+          for (const part of step.toolResults ?? []) {
+            const preview = JSON.stringify(part.output).slice(0, 400);
+            console.log(`[chat:tool-result] ${part.toolName} →`, preview);
+          }
+        }
+      },
       onError: (err) => {
         console.error("[chat] streamText error:", err);
       },
