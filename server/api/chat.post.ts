@@ -2,7 +2,7 @@
  * POST /api/chat
  *
  * Validates the HiPEAC DRF auth token from the Authorization header, then
- * streams a response from gpt-4.1-mini grounded in the HiPEAC MCP server tools.
+ * streams a response from gpt-5-mini grounded in the HiPEAC MCP server tools.
  *
  * The MCP client and tool schemas are initialised once at server startup and
  * reused across all requests. The tool schemas are still sent to OpenAI on
@@ -125,7 +125,7 @@ export default defineLazyEventHandler(async () => {
     let modelId = topicDef.model;
     if (topicDef.key === "vision") {
       if (visionYear === "compare") {
-        modelId = "gpt-4.1";
+        modelId = "gpt-5-mini";
         constraint +=
           "\n\nThe user is comparing Vision 2026 with Vision 2025. " +
           "You MUST pass years=[2025, 2026] to search_vision and explicitly highlight what changed between editions.";

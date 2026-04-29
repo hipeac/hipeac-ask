@@ -58,6 +58,17 @@
   padding-left: 0.75em;
   color: #6b7280;
 }
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+.thinking-dot {
+  animation: dot-pulse 1.4s ease-in-out infinite;
+  display: inline-block;
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
 </style>
 
 <script setup lang="ts">
@@ -140,6 +151,16 @@ const messagesEl = ref<HTMLElement | null>(null);
 const userMessageCount = computed(
   () => chat.value.messages.filter((m) => m.role === "user").length,
 );
+
+// True while the model is thinking — either before the first token or after
+// tool calls complete but before the assistant starts writing its answer.
+const isThinking = computed(() => {
+  if (chat.value.status === "submitted") return true;
+  if (chat.value.status !== "streaming") return false;
+  const lastAssistant = [...chat.value.messages].reverse().find((m) => m.role === "assistant");
+  if (!lastAssistant) return true;
+  return !lastAssistant.parts.some((p) => p.type === "text" && (p as { text?: string }).text);
+});
 
 function scrollToBottom() {
   nextTick(() => {
@@ -490,8 +511,8 @@ onMounted(async () => {
           </div>
 
           <!-- Streaming indicator -->
-          <div v-if="chat.status === 'submitted'" style="color: #9ca3af; font-size: 0.8rem">
-            Thinking…
+          <div v-if="isThinking" style="color: #9ca3af; font-size: 0.85rem; padding-left: 0.1rem">
+            Thinking<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span>
           </div>
 
           <!-- MCP promo — shown after 3 interactions -->
