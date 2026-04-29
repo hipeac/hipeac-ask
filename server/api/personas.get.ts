@@ -10,8 +10,6 @@ interface RawPersona {
   code: string;
   name: string;
   description: string;
-  icon: string;
-  starter_questions: string[];
   system_prompt: string;
 }
 
@@ -19,8 +17,6 @@ export interface PublicPersona {
   code: string;
   name: string;
   description: string;
-  icon: string;
-  starter_questions: string[];
 }
 
 export default defineEventHandler(async (): Promise<PublicPersona[]> => {
@@ -28,12 +24,10 @@ export default defineEventHandler(async (): Promise<PublicPersona[]> => {
 
   try {
     const data = await $fetch<RawPersona[]>(`${hipeacApiUrl}chat/personas/`);
-    return data.map(({ code, name, description, icon, starter_questions }) => ({
+    return data.map(({ code, name, description }) => ({
       code,
       name,
       description,
-      icon,
-      starter_questions,
     }));
   } catch {
     return [];
