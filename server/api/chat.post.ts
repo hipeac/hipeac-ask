@@ -51,6 +51,31 @@ export default defineLazyEventHandler(async () => {
     ) as typeof allTools;
   }
 
+  // Persona system prompts cached in process memory for the lifetime of the server.
+  // Cleared on redeploy. Falls back to BASE_SYSTEM_PROMPT if Django is unreachable.
+  interface DbPersona {
+    code: string;
+    system_prompt: string;
+  }
+  const personaSystemCache = new Map<string, string>();
+
+  async function resolvePersonaSystem(personaCode: string): Promise<string> {
+    if (personaSystemCache.has(personaCode)) {
+      return personaSystemCache.get(personaCode)!;
+    }
+    try {
+      const list = await $fetch<DbPersona[]>(`${config.hipeacApiUrl}chat/personas/`);
+      for (const p of list) {
+        if (p.system_prompt) {
+          personaSystemCache.set(p.code, `${p.system_prompt}\n\n${BASE_SYSTEM_PROMPT}`);
+        }
+      }
+    } catch {
+      // Django unreachable — fall back to base prompt for this request.
+    }
+    return personaSystemCache.get(personaCode) ?? BASE_SYSTEM_PROMPT;
+  }
+
   return defineEventHandler(async (event) => {
     // --- Auth ---
     const authHeader = getHeader(event, "authorization") ?? "";
@@ -90,23 +115,7 @@ export default defineLazyEventHandler(async () => {
       });
     }
 
-    // Fetch persona system prompt per-request (Django caches for 5 min).
-    interface DbPersona {
-      code: string;
-      system_prompt: string;
-    }
-    let personaSystem = BASE_SYSTEM_PROMPT;
-    if (persona) {
-      try {
-        const list = await $fetch<DbPersona[]>(`${config.hipeacApiUrl}chat/personas/`);
-        const match = list.find((p) => p.code === persona);
-        if (match?.system_prompt) {
-          personaSystem = `${match.system_prompt}\n\n${BASE_SYSTEM_PROMPT}`;
-        }
-      } catch {
-        // Fall back to base prompt if Django is unreachable.
-      }
-    }
+    const personaSystem = persona ? await resolvePersonaSystem(persona) : BASE_SYSTEM_PROMPT;
 
     const topicDef =
       TOPICS.find((t) => t.key === topic) ?? TOPICS.find((t) => t.key === DEFAULT_TOPIC_KEY)!;
@@ -126,7 +135,6 @@ export default defineLazyEventHandler(async () => {
           "You MUST pass year=2026 to search_vision on every call. Never return results from Vision 2025 unless the user explicitly asks.";
       }
     }
-
     const system = `${personaSystem}\n\n${constraint}`;
     const tools = toolsByTopic[topicDef.key];
     // --- Stream ---
