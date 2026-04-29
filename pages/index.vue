@@ -207,7 +207,10 @@ onMounted(async () => {
   try {
     const data = await $fetch<PublicPersona[]>("/api/personas");
     personas.value = data;
-    if (data.length && !persona.value) persona.value = data[0].code;
+    if (data.length && !persona.value) {
+      const general = data.find((p) => p.code === "general");
+      persona.value = general ? general.code : data[0].code;
+    }
   } catch {
     // personas will remain empty; chat still works with the base system prompt
   }
