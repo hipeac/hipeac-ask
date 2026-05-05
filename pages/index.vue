@@ -60,15 +60,24 @@
 }
 
 @keyframes dot-pulse {
-  0%, 100% { opacity: 0.2; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .thinking-dot {
   animation: dot-pulse 1.4s ease-in-out infinite;
   display: inline-block;
 }
-.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
-.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
 </style>
 
 <script setup lang="ts">
@@ -511,11 +520,40 @@ onMounted(async () => {
                 />
               </div>
             </template>
+
+            <!-- Fallback bubble: assistant completed without any text output -->
+            <div
+              v-if="
+                m.role === 'assistant' &&
+                chat.status === 'ready' &&
+                i === chat.messages.length - 1 &&
+                m.parts.some((p) => p.type === 'dynamic-tool') &&
+                !m.parts.some((p) => p.type === 'text' && (p as { text?: string }).text?.trim()) &&
+                !chatError
+              "
+              style="display: flex; justify-content: flex-start"
+            >
+              <div
+                style="
+                  background: #f3f4f6;
+                  color: #111827;
+                  padding: 0.65rem 0.95rem;
+                  border-radius: 10px;
+                  max-width: 70%;
+                  line-height: 1.55;
+                  font-size: 0.9rem;
+                "
+              >
+                I could not complete a written answer this time. Please try again with a slightly
+                more specific question.
+              </div>
+            </div>
           </div>
 
           <!-- Streaming indicator -->
           <div v-if="isThinking" style="color: #9ca3af; font-size: 0.85rem; padding-left: 0.1rem">
-            Thinking<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span>
+            Thinking<span class="thinking-dot">.</span><span class="thinking-dot">.</span
+            ><span class="thinking-dot">.</span>
           </div>
 
           <!-- MCP promo — shown after 3 interactions -->

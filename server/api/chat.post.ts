@@ -135,7 +135,10 @@ export default defineLazyEventHandler(async () => {
           "You MUST pass year=2026 to search_vision on every call. Never return results from Vision 2025 unless the user explicitly asks.";
       }
     }
-    const system = `${personaSystem}\n\n${constraint}`;
+    const system =
+      `${personaSystem}\n\n${constraint}` +
+      "\n\nExecution budget: you have at most 6 reasoning/tool steps in total. " +
+      "If you already performed 5 steps, stop calling tools and provide the best possible final answer to the user.";
     const tools = toolsByTopic[topicDef.key];
     // Network topic: force sequential tool calls so the model sees get_metadata
     // results before calling search_members. Without this, the model calls both
@@ -147,7 +150,7 @@ export default defineLazyEventHandler(async () => {
       system,
       messages: await convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(5),
+      stopWhen: stepCountIs(6),
       providerOptions: { openai: { parallelToolCalls } },
       onStepFinish: (step) => {
         if (import.meta.dev) {
