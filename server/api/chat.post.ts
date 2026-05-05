@@ -19,14 +19,22 @@ import { convertToModelMessages, stepCountIs, streamText, UIMessage } from "ai";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
 import { DEFAULT_TOPIC_KEY, TOPICS } from "../../shared/topics";
 
-async function validateHipeacToken(token: string, hipeacApiUrl: string): Promise<boolean> {
+const AUTH_VALIDATE_TIMEOUT_MS = 4000;
+const PERSONA_FETCH_TIMEOUT_MS = 2500;
+
+async function validateHipeacToken(token: string, hipeacApiUrl: string): Promise<boolean | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUTH_VALIDATE_TIMEOUT_MS);
   try {
     const res = await fetch(`${hipeacApiUrl}auth/me/`, {
       headers: { Authorization: `Token ${token}` },
+      signal: controller.signal,
     });
     return res.ok;
   } catch {
-    return false;
+    return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -64,7 +72,9 @@ export default defineLazyEventHandler(async () => {
       return personaSystemCache.get(personaCode)!;
     }
     try {
-      const list = await $fetch<DbPersona[]>(`${config.hipeacApiUrl}chat/personas/`);
+      const list = await $fetch<DbPersona[]>(`${config.hipeacApiUrl}chat/personas/`, {
+        timeout: PERSONA_FETCH_TIMEOUT_MS,
+      });
       for (const p of list) {
         if (p.system_prompt) {
           personaSystemCache.set(p.code, `${p.system_prompt}\n\n${BASE_SYSTEM_PROMPT}`);
@@ -89,6 +99,12 @@ export default defineLazyEventHandler(async () => {
     }
 
     const isValid = await validateHipeacToken(token, config.hipeacApiUrl);
+    if (isValid === null) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: "Authentication service temporarily unavailable. Please try again.",
+      });
+    }
     if (!isValid) {
       throw createError({
         statusCode: 401,

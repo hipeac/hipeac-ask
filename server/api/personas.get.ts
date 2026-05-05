@@ -23,7 +23,9 @@ export default defineEventHandler(async (): Promise<PublicPersona[]> => {
   const { hipeacApiUrl } = useRuntimeConfig();
 
   try {
-    const data = await $fetch<RawPersona[]>(`${hipeacApiUrl}chat/personas/`);
+    const data = await $fetch<RawPersona[]>(`${hipeacApiUrl}chat/personas/`, {
+      timeout: 2500,
+    });
     return data.map(({ code, name, description }) => ({
       code,
       name,
