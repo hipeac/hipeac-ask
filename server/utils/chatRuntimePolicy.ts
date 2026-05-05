@@ -4,6 +4,17 @@ export const EXECUTION_BUDGET_PROMPT =
   "\n\nExecution budget: you have at most 6 reasoning/tool steps in total. " +
   "If you already performed 5 steps, stop calling tools and provide the best possible final answer to the user.";
 
+export const FOLLOW_UP_ACTIONS_PROMPT =
+  "\n\nWhen useful, end your answer with a short section exactly titled 'Follow-up actions:' " +
+  "followed by 1-2 bullet points that are ready-to-send next user questions. " +
+  "Only include this section when it clearly helps the user continue the conversation. " +
+  "If you include this section, it must be the final part of your response (no text after it). " +
+  "Write each action as if the user is asking it directly (concise ask-style phrasing). " +
+  "Avoid broad or heavy suggestions like requesting full article text unless the user explicitly asked for that level of detail.";
+
+export const RESPONSE_STYLE_GUARD_PROMPT =
+  "\n\nDo not start responses with labels such as 'Short answer:' or similar meta framing.";
+
 export function extractTokenFromAuthorizationHeader(authHeader?: string): string | null {
   if (!authHeader) {
     return null;
@@ -39,7 +50,7 @@ export function resolveModelAndConstraint(
 }
 
 export function buildSystemPrompt(personaSystem: string, constraint: string): string {
-  return `${personaSystem}\n\n${constraint}${EXECUTION_BUDGET_PROMPT}`;
+  return `${personaSystem}\n\n${constraint}${EXECUTION_BUDGET_PROMPT}${FOLLOW_UP_ACTIONS_PROMPT}${RESPONSE_STYLE_GUARD_PROMPT}`;
 }
 
 export function shouldUseParallelToolCalls(topicKey: string): boolean {

@@ -103,6 +103,50 @@ function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(html);
 }
 
+function stripFollowUpActionsSection(text: string): string {
+  // Hide follow-up action content as soon as the heading appears to avoid
+  // streaming flash where text appears first and then turns into buttons.
+  const match = text.match(/\n?\s*(?:\*\*)?follow-up actions(?:\*\*)?\s*:?\s*\n?/i);
+  if (!match || match.index === undefined) {
+    return text;
+  }
+  return text.slice(0, match.index).trimEnd();
+}
+
+function stripAssistantMetaPrefix(text: string): string {
+  return text.replace(/^\s*(?:\*\*)?short answer(?:\*\*)?\s*:\s*/i, "");
+}
+
+function getMessageText(message: { parts: Array<{ type: string; text?: string }> }): string {
+  return message.parts
+    .filter((part) => part.type === "text" && part.text)
+    .map((part) => part.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function normalizeFollowUpActionCandidate(rawAction: string): string | null {
+  const action = rawAction.trim().replace(/^"|"$/g, "");
+  if (!action) return null;
+
+  // Suppress assistant-offer style actions; quick actions should feel like user asks.
+  if (/^(?:want|would you like|do you want)\b/i.test(action)) {
+    return null;
+  }
+
+  // Skip over-heavy default suggestions unless the user requested this depth explicitly.
+  if (/(?:full|entire)\s+.*(?:article|text)\b/i.test(action)) {
+    return null;
+  }
+
+  if (action.length > 90) {
+    return null;
+  }
+
+  return action;
+}
+
 const { token, isReady, init, login, logout } = useHipeacAuth();
 
 const input = ref("");
@@ -131,6 +175,44 @@ function handleSubmit(e: Event) {
 
 function sendExample(question: string) {
   chat.value.sendMessage({ text: question });
+}
+
+function sendFollowUpAction(prompt: string) {
+  if (chat.value.status === "streaming" || chat.value.status === "submitted") return;
+  chat.value.sendMessage({ text: prompt });
+}
+
+function extractFollowUpActionsFromMessage(message: {
+  role: string;
+  parts: Array<{ type: string; text?: string }>;
+}): string[] {
+  if (message.role !== "assistant") return [];
+
+  const fullText = getMessageText(message);
+  if (!fullText) return [];
+
+  const lines = fullText.split(/\r?\n/);
+  const headingIndex = lines.findIndex((line) =>
+    /^\s*(?:\*\*)?follow-up actions(?:\*\*)?\s*:?\s*$/i.test(line),
+  );
+  if (headingIndex === -1) return [];
+
+  const actions: string[] = [];
+  for (const line of lines.slice(headingIndex + 1)) {
+    const match = line.match(/^\s*(?:[-*]|\d+\.)\s+(.+)\s*$/);
+    if (!match) {
+      if (actions.length > 0) break;
+      continue;
+    }
+    const normalized = normalizeFollowUpActionCandidate(match[1]);
+    if (!normalized) {
+      continue;
+    }
+    actions.push(normalized);
+    if (actions.length === 2) break;
+  }
+
+  return actions;
 }
 
 function switchPersona(code: string) {
@@ -499,7 +581,7 @@ onMounted(async () => {
             <!-- Text bubbles -->
             <template v-for="(part, pi) in m.parts" :key="`${m.id}-text-${pi}`">
               <div
-                v-if="part.type === 'text' && part.text"
+                v-if="m.role === 'user' && part.type === 'text' && part.text"
                 :style="{
                   display: 'flex',
                   justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
@@ -518,10 +600,38 @@ onMounted(async () => {
                     fontSize: '0.9rem',
                   }"
                   :class="m.role === 'assistant' ? 'prose-bubble' : null"
-                  v-html="m.role === 'assistant' ? renderMarkdown(part.text) : part.text"
+                  v-html="
+                    m.role === 'assistant'
+                      ? renderMarkdown(stripFollowUpActionsSection(part.text))
+                      : part.text
+                  "
                 />
               </div>
             </template>
+
+            <div
+              v-if="m.role === 'assistant' && getMessageText(m)"
+              style="display: flex; justify-content: flex-start"
+            >
+              <div
+                style="
+                  background: #f3f4f6;
+                  color: #111827;
+                  padding: 0.65rem 0.95rem;
+                  border-radius: 10px;
+                  max-width: 70%;
+                  word-break: break-word;
+                  line-height: 1.55;
+                  font-size: 0.9rem;
+                "
+                class="prose-bubble"
+                v-html="
+                  renderMarkdown(
+                    stripFollowUpActionsSection(stripAssistantMetaPrefix(getMessageText(m))),
+                  )
+                "
+              />
+            </div>
 
             <!-- Fallback bubble: assistant completed without any text output -->
             <div
@@ -548,6 +658,39 @@ onMounted(async () => {
               >
                 I could not complete a written answer this time. Please try again with a slightly
                 more specific question.
+              </div>
+            </div>
+
+            <!-- Follow-up action buttons (ask-style quick prompts) -->
+            <div
+              v-if="
+                m.role === 'assistant' &&
+                i === chat.messages.length - 1 &&
+                chat.status === 'ready' &&
+                extractFollowUpActionsFromMessage(m).length > 0
+              "
+              style="display: flex; justify-content: flex-start"
+            >
+              <div style="display: flex; flex-wrap: wrap; gap: 0.45rem; max-width: 75%">
+                <button
+                  v-for="action in extractFollowUpActionsFromMessage(m)"
+                  :key="action"
+                  :disabled="chat.status === 'streaming' || chat.status === 'submitted'"
+                  style="
+                    border: 1px solid #d1d5db;
+                    background: #f9fafb;
+                    color: #374151;
+                    border-radius: 999px;
+                    padding: 0.35rem 0.75rem;
+                    font-size: 0.78rem;
+                    line-height: 1.35;
+                    text-align: left;
+                    cursor: pointer;
+                  "
+                  @click="sendFollowUpAction(action)"
+                >
+                  {{ action }}
+                </button>
               </div>
             </div>
           </div>
