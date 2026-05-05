@@ -15,53 +15,25 @@
 
 import { createMCPClient } from "@ai-sdk/mcp";
 import { createOpenAI } from "@ai-sdk/openai";
-import { convertToModelMessages, stepCountIs, streamText, UIMessage } from "ai";
-import { z } from "zod";
+import { convertToModelMessages, stepCountIs, streamText } from "ai";
+import { type AuthCacheEntry } from "../utils/authValidationCache";
+import { ChatRequestBodySchema } from "../utils/chatRequestBody";
+import {
+  buildSystemPrompt,
+  extractTokenFromAuthorizationHeader,
+  resolveModelAndConstraint,
+  resolveTopicDefinition,
+  shouldUseParallelToolCalls,
+} from "../utils/chatRuntimePolicy";
+import { validateAuthToken } from "../utils/validateAuthToken";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
-import { DEFAULT_TOPIC_KEY, TOPICS } from "../../shared/topics";
+import { TOPICS } from "../../shared/topics";
 
 const AUTH_VALIDATE_TIMEOUT_MS = 4000;
 const PERSONA_FETCH_TIMEOUT_MS = 2500;
 const AUTH_CACHE_TTL_MS = 60_000;
 
-interface AuthCacheEntry {
-  isValid: boolean;
-  expiresAt: number;
-}
-
 const authValidationCache = new Map<string, AuthCacheEntry>();
-
-const ChatRequestBodySchema = z.object({
-  messages: z.array(z.custom<UIMessage>()).min(1),
-  persona: z.string().optional(),
-  topic: z.string().optional(),
-  visionYear: z.string().optional(),
-});
-
-async function validateHipeacToken(token: string, hipeacApiUrl: string): Promise<boolean | null> {
-  const cached = authValidationCache.get(token);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.isValid;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AUTH_VALIDATE_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${hipeacApiUrl}auth/me/`, {
-      headers: { Authorization: `Token ${token}` },
-      signal: controller.signal,
-    });
-    authValidationCache.set(token, {
-      isValid: res.ok,
-      expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
-    });
-    return res.ok;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 export default defineLazyEventHandler(async () => {
   const config = useRuntimeConfig();
@@ -114,7 +86,7 @@ export default defineLazyEventHandler(async () => {
   return defineEventHandler(async (event) => {
     // --- Auth ---
     const authHeader = getHeader(event, "authorization") ?? "";
-    const token = authHeader.startsWith("Token ") ? authHeader.slice(6) : null;
+    const token = extractTokenFromAuthorizationHeader(authHeader);
 
     if (!token) {
       throw createError({
@@ -123,7 +95,13 @@ export default defineLazyEventHandler(async () => {
       });
     }
 
-    const isValid = await validateHipeacToken(token, config.hipeacApiUrl);
+    const isValid = await validateAuthToken({
+      cache: authValidationCache,
+      token,
+      hipeacApiUrl: config.hipeacApiUrl,
+      timeoutMs: AUTH_VALIDATE_TIMEOUT_MS,
+      cacheTtlMs: AUTH_CACHE_TTL_MS,
+    });
     if (isValid === null) {
       throw createError({
         statusCode: 503,
@@ -150,33 +128,14 @@ export default defineLazyEventHandler(async () => {
 
     const personaSystem = persona ? await resolvePersonaSystem(persona) : BASE_SYSTEM_PROMPT;
 
-    const topicDef =
-      TOPICS.find((t) => t.key === topic) ?? TOPICS.find((t) => t.key === DEFAULT_TOPIC_KEY)!;
-
-    let constraint = topicDef.constraint;
-    // Compare mode requires cross-edition reasoning — step up to a stronger model.
-    let modelId = topicDef.model;
-    if (topicDef.key === "vision") {
-      if (visionYear === "compare") {
-        modelId = "gpt-5-mini";
-        constraint +=
-          "\n\nThe user is comparing Vision 2026 with Vision 2025. " +
-          "You MUST pass years=[2025, 2026] to search_vision and explicitly highlight what changed between editions.";
-      } else {
-        constraint +=
-          "\n\nThe user is asking about Vision 2026 only. " +
-          "You MUST pass year=2026 to search_vision on every call. Never return results from Vision 2025 unless the user explicitly asks.";
-      }
-    }
-    const system =
-      `${personaSystem}\n\n${constraint}` +
-      "\n\nExecution budget: you have at most 6 reasoning/tool steps in total. " +
-      "If you already performed 5 steps, stop calling tools and provide the best possible final answer to the user.";
+    const topicDef = resolveTopicDefinition(topic);
+    const { modelId, constraint } = resolveModelAndConstraint(topicDef, visionYear);
+    const system = buildSystemPrompt(personaSystem, constraint);
     const tools = toolsByTopic[topicDef.key];
     // Network topic: force sequential tool calls so the model sees get_metadata
     // results before calling search_members. Without this, the model calls both
     // in parallel and halluccinates topic IDs it hasn't seen yet.
-    const parallelToolCalls = topicDef.key !== "network";
+    const parallelToolCalls = shouldUseParallelToolCalls(topicDef.key);
     // --- Stream ---
     const result = streamText({
       model: openai(modelId),

@@ -10,6 +10,12 @@
 
 const TOKEN_KEY = "hipeac_token";
 
+export function buildHipeacTokenUrl(hipeacBaseUrl: string, origin: string): string {
+  const tokenUrl = `${hipeacBaseUrl}/api/auth/token/`;
+  const next = encodeURIComponent(origin);
+  return `${tokenUrl}?next=${next}`;
+}
+
 export function useHipeacAuth() {
   const token = ref<string | null>(null);
   const isReady = ref(false);
@@ -37,9 +43,7 @@ export function useHipeacAuth() {
   /** Redirect the user to the HiPEAC login flow. */
   function login(): void {
     const { public: pub } = useRuntimeConfig();
-    const tokenUrl = `${pub.hipeacBaseUrl}/api/auth/token/`;
-    const next = encodeURIComponent(window.location.origin);
-    window.location.href = `${tokenUrl}?next=${next}`;
+    window.location.href = buildHipeacTokenUrl(pub.hipeacBaseUrl, window.location.origin);
   }
 
   /** Clear the stored token and mark the user as unauthenticated. */

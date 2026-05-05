@@ -1,0 +1,47 @@
+import { DEFAULT_TOPIC_KEY, TOPICS, type Topic } from "../../shared/topics";
+
+export const EXECUTION_BUDGET_PROMPT =
+  "\n\nExecution budget: you have at most 6 reasoning/tool steps in total. " +
+  "If you already performed 5 steps, stop calling tools and provide the best possible final answer to the user.";
+
+export function extractTokenFromAuthorizationHeader(authHeader?: string): string | null {
+  if (!authHeader) {
+    return null;
+  }
+  return authHeader.startsWith("Token ") ? authHeader.slice(6) : null;
+}
+
+export function resolveTopicDefinition(topic?: string): Topic {
+  return TOPICS.find((t) => t.key === topic) ?? TOPICS.find((t) => t.key === DEFAULT_TOPIC_KEY)!;
+}
+
+export function resolveModelAndConstraint(
+  topicDef: Topic,
+  visionYear?: string,
+): { modelId: string; constraint: string } {
+  let constraint = topicDef.constraint;
+  let modelId = topicDef.model;
+
+  if (topicDef.key === "vision") {
+    if (visionYear === "compare") {
+      modelId = "gpt-5-mini";
+      constraint +=
+        "\n\nThe user is comparing Vision 2026 with Vision 2025. " +
+        "You MUST pass years=[2025, 2026] to search_vision and explicitly highlight what changed between editions.";
+    } else {
+      constraint +=
+        "\n\nThe user is asking about Vision 2026 only. " +
+        "You MUST pass year=2026 to search_vision on every call. Never return results from Vision 2025 unless the user explicitly asks.";
+    }
+  }
+
+  return { modelId, constraint };
+}
+
+export function buildSystemPrompt(personaSystem: string, constraint: string): string {
+  return `${personaSystem}\n\n${constraint}${EXECUTION_BUDGET_PROMPT}`;
+}
+
+export function shouldUseParallelToolCalls(topicKey: string): boolean {
+  return topicKey !== "network";
+}
