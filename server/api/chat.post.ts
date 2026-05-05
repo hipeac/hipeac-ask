@@ -16,6 +16,7 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { createOpenAI } from "@ai-sdk/openai";
 import { convertToModelMessages, stepCountIs, streamText, UIMessage } from "ai";
+import { z } from "zod";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
 import { DEFAULT_TOPIC_KEY, TOPICS } from "../../shared/topics";
 
@@ -29,6 +30,13 @@ interface AuthCacheEntry {
 }
 
 const authValidationCache = new Map<string, AuthCacheEntry>();
+
+const ChatRequestBodySchema = z.object({
+  messages: z.array(z.custom<UIMessage>()).min(1),
+  persona: z.string().optional(),
+  topic: z.string().optional(),
+  visionYear: z.string().optional(),
+});
 
 async function validateHipeacToken(token: string, hipeacApiUrl: string): Promise<boolean | null> {
   const cached = authValidationCache.get(token);
@@ -130,23 +138,15 @@ export default defineLazyEventHandler(async () => {
     }
 
     // --- Request body ---
-    const {
-      messages,
-      persona,
-      topic,
-      visionYear,
-    }: {
-      messages: UIMessage[];
-      persona?: string;
-      topic?: string;
-      visionYear?: string;
-    } = await readBody(event);
-    if (!messages?.length) {
+    const parseResult = ChatRequestBodySchema.safeParse(await readBody(event));
+    if (!parseResult.success) {
       throw createError({
         statusCode: 400,
-        statusMessage: "messages is required.",
+        statusMessage: "Invalid request body.",
       });
     }
+
+    const { messages, persona, topic, visionYear } = parseResult.data;
 
     const personaSystem = persona ? await resolvePersonaSystem(persona) : BASE_SYSTEM_PROMPT;
 
