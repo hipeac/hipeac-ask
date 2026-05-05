@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import { Chat } from "@ai-sdk/vue";
 import { DefaultChatTransport } from "ai";
+import DOMPurify from "isomorphic-dompurify";
 import { marked } from "marked";
 import { computed, nextTick, onMounted, ref, watchEffect } from "vue";
 import { useHipeacAuth } from "~/composables/useHipeacAuth";
@@ -96,9 +97,10 @@ const visionYear = ref<"2026" | "compare">("2026");
 
 const currentTopic = computed(() => TOPICS.find((t) => t.key === topic.value) ?? TOPICS[0]);
 
-// marked produces sanitized inline HTML; content is always from our own API.
+// marked does not sanitize HTML. Sanitize before rendering with v-html.
 function renderMarkdown(text: string): string {
-  return marked.parse(text) as string;
+  const html = marked.parse(text) as string;
+  return DOMPurify.sanitize(html);
 }
 
 const { token, isReady, init, login, logout } = useHipeacAuth();
