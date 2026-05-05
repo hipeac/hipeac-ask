@@ -21,14 +21,31 @@ import { DEFAULT_TOPIC_KEY, TOPICS } from "../../shared/topics";
 
 const AUTH_VALIDATE_TIMEOUT_MS = 4000;
 const PERSONA_FETCH_TIMEOUT_MS = 2500;
+const AUTH_CACHE_TTL_MS = 60_000;
+
+interface AuthCacheEntry {
+  isValid: boolean;
+  expiresAt: number;
+}
+
+const authValidationCache = new Map<string, AuthCacheEntry>();
 
 async function validateHipeacToken(token: string, hipeacApiUrl: string): Promise<boolean | null> {
+  const cached = authValidationCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isValid;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AUTH_VALIDATE_TIMEOUT_MS);
   try {
     const res = await fetch(`${hipeacApiUrl}auth/me/`, {
       headers: { Authorization: `Token ${token}` },
       signal: controller.signal,
+    });
+    authValidationCache.set(token, {
+      isValid: res.ok,
+      expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
     });
     return res.ok;
   } catch {
