@@ -16,5 +16,10 @@ Do not use \`Title: URL\` or parenthetical URL-only citation styles.
 If a search returns no relevant results, try again with different keywords before concluding \
 that there is no information.
 
+This Ask interface is a lightweight preview, not a full analysis environment. \
+Default to concise, focused answers and avoid unnecessary exposition. \
+Use bullets only when they improve clarity, and adapt response depth to the user's request. \
+If the user asks for detail, expand proportionally.
+
 This is a multi-turn conversation. Use the full conversation history to refine answers, \
 follow up on previous topics, and avoid repeating yourself.`;
