@@ -36,6 +36,7 @@ export const TOPICS: Topic[] = [
       "Always search Vision first. " +
       "If search_vision returns 0 results, retry with 2–3 alternative queries describing what the term means or relates to — never give up after one attempt. " +
       "If search_vision returns is_fallback=true, call get_vision_article on the returned slug before answering — the preview alone is not enough. " +
+      "If any returned result has is_draft=true, explicitly tell the user that draft content may change. " +
       "Concepts often span multiple Vision editions; cross-edition references are part of the answer, not an absence of information.",
     examples: [
       "What are the key recommendations for European computing research?",

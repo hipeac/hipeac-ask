@@ -8,7 +8,7 @@ describe("BASE_SYSTEM_PROMPT", () => {
   });
 
   it("contains adaptive brevity guidance", () => {
-    expect(BASE_SYSTEM_PROMPT).toContain("Default to **very concise**, focused answers");
+    expect(BASE_SYSTEM_PROMPT).toContain("Default to very concise, focused answers");
     expect(BASE_SYSTEM_PROMPT).toContain("adapt response depth to the user's request");
     expect(BASE_SYSTEM_PROMPT).toContain("If the user asks for detail, expand proportionally");
   });
