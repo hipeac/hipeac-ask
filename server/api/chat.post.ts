@@ -25,6 +25,7 @@ import {
   resolveTopicDefinition,
   shouldUseParallelToolCalls,
 } from "../utils/chatRuntimePolicy";
+import { classifyRequestScope } from "../utils/scopeClassifier";
 import { validateAuthToken } from "../utils/validateAuthToken";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
 import { TOPICS } from "../../shared/topics";
@@ -126,9 +127,24 @@ export default defineLazyEventHandler(async () => {
 
     const { messages, persona, topic, visionYear } = parseResult.data;
 
+    const topicDef = resolveTopicDefinition(topic);
+
+    // Classify request scope using LLM
+    const scopeClassification = await classifyRequestScope(messages, config.openaiApiKey);
+    if (scopeClassification.classification !== "in-scope") {
+      const reason =
+        scopeClassification.classification === "gaming-attempt"
+          ? "This appears to be an adversarial request. Ask only about HiPEAC Vision, HiPEAC network members, or HiPEAC events."
+          : "Out-of-scope request. Ask only about HiPEAC Vision, HiPEAC network members, or HiPEAC events.";
+
+      throw createError({
+        statusCode: 422,
+        statusMessage: reason,
+      });
+    }
+
     const personaSystem = persona ? await resolvePersonaSystem(persona) : BASE_SYSTEM_PROMPT;
 
-    const topicDef = resolveTopicDefinition(topic);
     const { modelId, constraint } = resolveModelAndConstraint(topicDef, visionYear);
     const system = buildSystemPrompt(personaSystem, constraint);
     const tools = toolsByTopic[topicDef.key];

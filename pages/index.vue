@@ -289,6 +289,11 @@ watchEffect(() => {
       chatError.value = "Rate limit reached. Please wait a moment before sending another message.";
       return;
     }
+    if (parsed.statusCode === 422) {
+      chatError.value =
+        "Out of scope. Ask only about HiPEAC Vision, HiPEAC network members, or HiPEAC events.";
+      return;
+    }
     chatError.value = parsed.statusMessage ?? "Something went wrong. Please try again.";
   } catch {
     chatError.value = err.message ?? "Something went wrong. Please try again.";
