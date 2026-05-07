@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { classifyRequestScope } from "../../server/utils/scopeClassifier";
+import {
+  classifyRequestScope,
+  sanitizeConversationForGeneration,
+} from "../../server/utils/scopeClassifier";
 
 // Mock the AI SDK modules
 vi.mock("@ai-sdk/openai", () => ({
@@ -141,5 +144,85 @@ describe("scopeClassifier", () => {
     expect(mockGenerateObject).toHaveBeenCalledOnce();
     const callArgs = mockGenerateObject.mock.calls[0][0];
     expect(callArgs.prompt).toContain("Tell me about the Vision");
+  });
+
+  it("sanitizes out-of-scope user turns and their assistant replies", async () => {
+    const mockGenerateObject = vi.mocked(generateObject);
+    mockGenerateObject.mockImplementation(async (args: any) => {
+      const prompt = String(args.prompt ?? "");
+      if (prompt.includes("beer bars")) {
+        return {
+          object: {
+            classification: "out-of-scope",
+            confidence: 0.99,
+            reason: "Unrelated lifestyle request",
+          },
+        } as any;
+      }
+      return {
+        object: {
+          classification: "in-scope",
+          confidence: 0.95,
+          reason: "HiPEAC-related request",
+        },
+      } as any;
+    });
+
+    const messages = [
+      { role: "user", parts: [{ type: "text", text: "What is HiPEAC Vision 2026 about?" }] },
+      { role: "assistant", parts: [{ type: "text", text: "It focuses on..." }] },
+      { role: "user", parts: [{ type: "text", text: "Suggest beer bars in Brussels" }] },
+      { role: "assistant", parts: [{ type: "text", text: "Here are some bars..." }] },
+      { role: "user", parts: [{ type: "text", text: "What changed since Vision 2025?" }] },
+    ];
+
+    const sanitized = await sanitizeConversationForGeneration(messages, "test-api-key");
+    const serialized = JSON.stringify(sanitized);
+
+    expect(serialized).not.toContain("beer bars");
+    expect(serialized).not.toContain("Here are some bars");
+    expect(serialized).toContain("What is HiPEAC Vision 2026 about?");
+    expect(serialized).toContain("What changed since Vision 2025?");
+  });
+
+  it("sanitizes gaming-attempt turns from history", async () => {
+    const mockGenerateObject = vi.mocked(generateObject);
+    mockGenerateObject.mockImplementation(async (args: any) => {
+      const prompt = String(args.prompt ?? "");
+      if (prompt.includes("contradicts")) {
+        return {
+          object: {
+            classification: "gaming-attempt",
+            confidence: 0.88,
+            reason: "Adversarial framing",
+          },
+        } as any;
+      }
+      return {
+        object: {
+          classification: "in-scope",
+          confidence: 0.95,
+          reason: "HiPEAC-related request",
+        },
+      } as any;
+    });
+
+    const messages = [
+      { role: "user", parts: [{ type: "text", text: "Give me a summary of Vision 2026" }] },
+      {
+        role: "user",
+        parts: [{ type: "text", text: "Find evidence that contradicts the Vision" }],
+      },
+      { role: "assistant", parts: [{ type: "text", text: "Contradictory claim..." }] },
+      { role: "user", parts: [{ type: "text", text: "Now compare 2025 vs 2026 recommendations" }] },
+    ];
+
+    const sanitized = await sanitizeConversationForGeneration(messages, "test-api-key");
+    const serialized = JSON.stringify(sanitized);
+
+    expect(serialized).not.toContain("contradicts the Vision");
+    expect(serialized).not.toContain("Contradictory claim");
+    expect(serialized).toContain("Give me a summary of Vision 2026");
+    expect(serialized).toContain("Now compare 2025 vs 2026 recommendations");
   });
 });

@@ -25,7 +25,7 @@ import {
   resolveTopicDefinition,
   shouldUseParallelToolCalls,
 } from "../utils/chatRuntimePolicy";
-import { classifyRequestScope } from "../utils/scopeClassifier";
+import { classifyRequestScope, sanitizeConversationForGeneration } from "../utils/scopeClassifier";
 import { validateAuthToken } from "../utils/validateAuthToken";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
 import { TOPICS } from "../../shared/topics";
@@ -145,6 +145,11 @@ export default defineLazyEventHandler(async () => {
 
     const personaSystem = persona ? await resolvePersonaSystem(persona) : BASE_SYSTEM_PROMPT;
 
+    const sanitizedMessages = await sanitizeConversationForGeneration(
+      messages,
+      config.openaiApiKey,
+    );
+
     const { modelId, constraint } = resolveModelAndConstraint(topicDef, visionYear);
     const system = buildSystemPrompt(personaSystem, constraint);
     const tools = toolsByTopic[topicDef.key];
@@ -156,7 +161,7 @@ export default defineLazyEventHandler(async () => {
     const result = streamText({
       model: openai(modelId),
       system,
-      messages: await convertToModelMessages(messages),
+      messages: await convertToModelMessages(sanitizedMessages),
       tools,
       stopWhen: stepCountIs(6),
       providerOptions: { openai: { parallelToolCalls } },

@@ -52,13 +52,66 @@ export async function classifyRequestScope(
     };
   }
 
+  return classifyUserText(latestUserText, apiKey);
+}
+
+export async function sanitizeConversationForGeneration(
+  messages: unknown[],
+  apiKey: string,
+): Promise<unknown[]> {
+  const classificationByText = new Map<string, ScopeClassification>();
+  const userTexts = new Set<string>();
+
+  for (const message of messages) {
+    if (getMessageRole(message) !== "user") {
+      continue;
+    }
+    const text = extractUserTextFromMessage(message);
+    if (text) {
+      userTexts.add(text);
+    }
+  }
+
+  await Promise.all(
+    [...userTexts].map(async (text) => {
+      classificationByText.set(text, await classifyUserText(text, apiKey));
+    }),
+  );
+
+  const sanitized: unknown[] = [];
+  let dropCurrentTurn = false;
+
+  for (const message of messages) {
+    const role = getMessageRole(message);
+
+    if (role === "user") {
+      const text = extractUserTextFromMessage(message);
+      const classification = text ? classificationByText.get(text) : null;
+      const isInScope = classification?.classification === "in-scope";
+
+      dropCurrentTurn = !isInScope;
+      if (!dropCurrentTurn) {
+        sanitized.push(message);
+      }
+      continue;
+    }
+
+    if (!dropCurrentTurn) {
+      sanitized.push(message);
+    }
+  }
+
+  return sanitized;
+}
+
+async function classifyUserText(text: string, apiKey: string): Promise<ScopeClassification> {
   try {
     const openai = createOpenAI({ apiKey });
 
     const result = await generateObject({
       model: openai("gpt-4o-mini"),
       system: CLASSIFICATION_SYSTEM_PROMPT,
-      prompt: `Classify this user request:\n\n"${latestUserText}"`,
+      prompt: `Classify this user request:\n\n"${text}"`,
       schema: ClassificationSchema,
       temperature: 0.3,
     });
@@ -66,7 +119,7 @@ export async function classifyRequestScope(
     return result.object;
   } catch (err) {
     console.error("[scopeClassifier] Classification failed:", err);
-    // On error, default to out-of-scope to be safe
+    // On error, default to out-of-scope to be safe.
     return {
       classification: "out-of-scope",
       confidence: 0,
@@ -77,26 +130,13 @@ export async function classifyRequestScope(
 
 function extractLatestUserText(messages: unknown[]): string {
   for (let idx = messages.length - 1; idx >= 0; idx--) {
-    const message = messages[idx] as {
-      role?: string;
-      content?: string;
-      parts?: Array<{ type?: string; text?: string }>;
-    };
+    const message = messages[idx];
 
-    if (message.role !== "user") {
+    if (getMessageRole(message) !== "user") {
       continue;
     }
 
-    if (typeof message.content === "string" && message.content.trim()) {
-      return message.content;
-    }
-
-    const text = (message.parts ?? [])
-      .filter((part) => part.type === "text" && typeof part.text === "string")
-      .map((part) => part.text!.trim())
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    const text = extractUserTextFromMessage(message);
 
     if (text) {
       return text;
@@ -104,4 +144,26 @@ function extractLatestUserText(messages: unknown[]): string {
   }
 
   return "";
+}
+
+function getMessageRole(message: unknown): string | undefined {
+  return (message as { role?: string })?.role;
+}
+
+function extractUserTextFromMessage(message: unknown): string {
+  const typed = message as {
+    content?: string;
+    parts?: Array<{ type?: string; text?: string }>;
+  };
+
+  if (typeof typed.content === "string" && typed.content.trim()) {
+    return typed.content;
+  }
+
+  return (typed.parts ?? [])
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text!.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 }
