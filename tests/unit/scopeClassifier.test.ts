@@ -146,6 +146,52 @@ describe("scopeClassifier", () => {
     expect(callArgs.prompt).toContain("Tell me about the Vision");
   });
 
+  it("keeps terse in-context follow-up requests in scope", async () => {
+    const mockGenerateObject = vi.mocked(generateObject);
+    mockGenerateObject.mockImplementation(async (args: any) => {
+      const prompt = String(args.prompt ?? "");
+      if (prompt.includes("Give a 30-word version I can paste into an email.")) {
+        const hasPriorContext = prompt.includes("Prior in-scope conversation context");
+        return {
+          object: {
+            classification: hasPriorContext ? "in-scope" : "out-of-scope",
+            confidence: 0.9,
+            reason: hasPriorContext ? "Contextual rewrite request" : "Standalone rewrite request",
+          },
+        } as any;
+      }
+      return {
+        object: {
+          classification: "in-scope",
+          confidence: 0.95,
+          reason: "HiPEAC-related request",
+        },
+      } as any;
+    });
+
+    const messages = [
+      {
+        role: "user",
+        parts: [{ type: "text", text: "What does Vision 2026 say about AI hardware co-design?" }],
+      },
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "It emphasizes tight AI/hardware integration..." }],
+      },
+      {
+        role: "user",
+        parts: [{ type: "text", text: "Give a 30-word version I can paste into an email." }],
+      },
+    ];
+
+    const result = await classifyRequestScope(messages, "test-api-key");
+    expect(result.classification).toBe("in-scope");
+
+    const sanitized = await sanitizeConversationForGeneration(messages, "test-api-key");
+    const serialized = JSON.stringify(sanitized);
+    expect(serialized).toContain("Give a 30-word version I can paste into an email.");
+  });
+
   it("sanitizes out-of-scope user turns and their assistant replies", async () => {
     const mockGenerateObject = vi.mocked(generateObject);
     mockGenerateObject.mockImplementation(async (args: any) => {

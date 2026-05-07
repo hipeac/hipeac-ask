@@ -42,9 +42,10 @@ export async function classifyRequestScope(
   messages: unknown[],
   apiKey: string,
 ): Promise<ScopeClassification> {
-  const latestUserText = extractLatestUserText(messages);
+  const classifications = await classifyUserTurnsInOrder(messages, apiKey);
+  const latest = classifications.at(-1);
 
-  if (!latestUserText) {
+  if (!latest) {
     return {
       classification: "out-of-scope",
       confidence: 1,
@@ -52,31 +53,15 @@ export async function classifyRequestScope(
     };
   }
 
-  return classifyUserText(latestUserText, apiKey);
+  return latest.classification;
 }
 
 export async function sanitizeConversationForGeneration(
   messages: unknown[],
   apiKey: string,
 ): Promise<unknown[]> {
-  const classificationByText = new Map<string, ScopeClassification>();
-  const userTexts = new Set<string>();
-
-  for (const message of messages) {
-    if (getMessageRole(message) !== "user") {
-      continue;
-    }
-    const text = extractUserTextFromMessage(message);
-    if (text) {
-      userTexts.add(text);
-    }
-  }
-
-  await Promise.all(
-    [...userTexts].map(async (text) => {
-      classificationByText.set(text, await classifyUserText(text, apiKey));
-    }),
-  );
+  const classifications = await classifyUserTurnsInOrder(messages, apiKey);
+  const userClassificationQueue = [...classifications];
 
   const sanitized: unknown[] = [];
   let dropCurrentTurn = false;
@@ -85,8 +70,7 @@ export async function sanitizeConversationForGeneration(
     const role = getMessageRole(message);
 
     if (role === "user") {
-      const text = extractUserTextFromMessage(message);
-      const classification = text ? classificationByText.get(text) : null;
+      const classification = userClassificationQueue.shift()?.classification;
       const isInScope = classification?.classification === "in-scope";
 
       dropCurrentTurn = !isInScope;
@@ -104,14 +88,56 @@ export async function sanitizeConversationForGeneration(
   return sanitized;
 }
 
-async function classifyUserText(text: string, apiKey: string): Promise<ScopeClassification> {
-  try {
-    const openai = createOpenAI({ apiKey });
+async function classifyUserTurnsInOrder(
+  messages: unknown[],
+  apiKey: string,
+): Promise<Array<{ text: string; classification: ScopeClassification }>> {
+  const openai = createOpenAI({ apiKey });
+  const classifications: Array<{ text: string; classification: ScopeClassification }> = [];
+  const priorInScopeContext: string[] = [];
 
+  for (const message of messages) {
+    if (getMessageRole(message) !== "user") {
+      continue;
+    }
+
+    const text = extractUserTextFromMessage(message);
+    if (!text) {
+      continue;
+    }
+
+    const classification = await classifyUserText(text, openai, priorInScopeContext);
+    classifications.push({ text, classification });
+
+    if (classification.classification === "in-scope") {
+      priorInScopeContext.push(text);
+      // Keep prompt context bounded.
+      if (priorInScopeContext.length > 6) {
+        priorInScopeContext.shift();
+      }
+    }
+  }
+
+  return classifications;
+}
+
+async function classifyUserText(
+  text: string,
+  openai: ReturnType<typeof createOpenAI>,
+  priorInScopeContext: string[],
+): Promise<ScopeClassification> {
+  const contextBlock =
+    priorInScopeContext.length > 0
+      ? `\n\nPrior in-scope conversation context (most recent last):\n${priorInScopeContext.map((item, idx) => `${idx + 1}. ${item}`).join("\n")}`
+      : "";
+
+  try {
     const result = await generateObject({
       model: openai("gpt-4o-mini"),
       system: CLASSIFICATION_SYSTEM_PROMPT,
-      prompt: `Classify this user request:\n\n"${text}"`,
+      prompt:
+        `Classify this latest user request. Consider it in context when prior in-scope turns exist:\n\n` +
+        `Latest user request:\n"${text}"${contextBlock}`,
       schema: ClassificationSchema,
       temperature: 0.3,
     });
@@ -126,24 +152,6 @@ async function classifyUserText(text: string, apiKey: string): Promise<ScopeClas
       reason: "Classification service error",
     };
   }
-}
-
-function extractLatestUserText(messages: unknown[]): string {
-  for (let idx = messages.length - 1; idx >= 0; idx--) {
-    const message = messages[idx];
-
-    if (getMessageRole(message) !== "user") {
-      continue;
-    }
-
-    const text = extractUserTextFromMessage(message);
-
-    if (text) {
-      return text;
-    }
-  }
-
-  return "";
 }
 
 function getMessageRole(message: unknown): string | undefined {
