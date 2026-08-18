@@ -31,7 +31,7 @@ import { resolvePersonaSystem } from "../utils/personaResolver";
 import { classifyRequestScope, sanitizeConversationForGeneration } from "../utils/scopeClassifier";
 import { validateAuthToken } from "../utils/validateAuthToken";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
-import { TOPICS } from "../../shared/topics";
+import { activeTopicsLabelList, TOPICS } from "../../shared/topics";
 
 const AUTH_VALIDATE_TIMEOUT_MS = 4000;
 const PERSONA_FETCH_TIMEOUT_MS = 2500;
@@ -112,10 +112,11 @@ export default defineLazyEventHandler(async () => {
     // Classify request scope using LLM
     const scopeClassification = await classifyRequestScope(messages, config.openaiApiKey);
     if (scopeClassification.classification !== "in-scope") {
+      const inScopeTopics = activeTopicsLabelList();
       const reason =
         scopeClassification.classification === "gaming-attempt"
-          ? "This appears to be an adversarial request. Ask only about HiPEAC Vision, HiPEAC network members, or HiPEAC events."
-          : "Out-of-scope request. Ask only about HiPEAC Vision, HiPEAC network members, or HiPEAC events.";
+          ? `This appears to be an adversarial request. Ask only about ${inScopeTopics}.`
+          : `Out-of-scope request. Ask only about ${inScopeTopics}.`;
 
       throw createError({
         statusCode: 422,

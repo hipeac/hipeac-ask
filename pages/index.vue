@@ -759,8 +759,8 @@ onMounted(async () => {
             {{ chatError }}
           </div>
 
-          <!-- Topic selector — 3 columns -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem">
+          <!-- Topic selector — one column per topic, so it stays evenly distributed as topics are added/removed -->
+          <div :style="{ display: 'grid', gridTemplateColumns: `repeat(${TOPICS.length}, 1fr)`, gap: '0.5rem' }">
             <button
               v-for="t in TOPICS"
               :key="t.key"

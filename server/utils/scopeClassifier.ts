@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { activeTopicsSummary } from "../../shared/topics";
 
 const ClassificationSchema = z.object({
   classification: z
@@ -18,9 +19,7 @@ type ScopeClassification = z.infer<typeof ClassificationSchema>;
 
 const CLASSIFICATION_SYSTEM_PROMPT = `\
 You are a scope classifier for HiPEAC Ask, a lightweight interface for asking about:
-- HiPEAC Vision: European computing research strategic documents
-- HiPEAC Network: 2000+ researchers and institutions across Europe
-- HiPEAC Events: conferences, workshops, and summer schools
+${activeTopicsSummary()}
 
 Classify user requests into three categories:
 

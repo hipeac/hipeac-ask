@@ -114,3 +114,28 @@ export const TOPICS: Topic[] = [
 ];
 
 export const DEFAULT_TOPIC_KEY = "vision";
+
+function activeTopics(): Topic[] {
+  return TOPICS.filter((t) => !t.disabled);
+}
+
+/**
+ * Bullet list of active topics with their descriptions, for the scope
+ * classifier's system prompt. Derived from TOPICS so adding/removing a topic
+ * can't silently leave the classifier blocking questions about it.
+ */
+export function activeTopicsSummary(): string {
+  return activeTopics()
+    .map((t) => `- ${t.label}: ${t.description}`)
+    .join("\n");
+}
+
+/**
+ * Natural-language "X, Y, or Z" list of active topic labels, for user-facing
+ * out-of-scope messages.
+ */
+export function activeTopicsLabelList(): string {
+  const labels = activeTopics().map((t) => t.label);
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")}, or ${labels[labels.length - 1]}`;
+}
