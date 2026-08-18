@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
+  classificationCache,
   classifyRequestScope,
   sanitizeConversationForGeneration,
 } from "../../server/utils/scopeClassifier";
@@ -20,6 +21,7 @@ import { generateObject } from "ai";
 describe("scopeClassifier", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    classificationCache.clear();
   });
 
   it("classifies in-scope vision requests", async () => {
@@ -270,5 +272,52 @@ describe("scopeClassifier", () => {
     expect(serialized).not.toContain("Contradictory claim");
     expect(serialized).toContain("Give me a summary of Vision 2026");
     expect(serialized).toContain("Now compare 2025 vs 2026 recommendations");
+  });
+
+  it("does not reclassify a previously-seen message id (cross-request cache)", async () => {
+    const mockGenerateObject = vi.mocked(generateObject);
+    mockGenerateObject.mockResolvedValue({
+      object: { classification: "in-scope", confidence: 0.95, reason: "HiPEAC-related request" },
+    } as any);
+
+    const firstTurn = {
+      id: "msg-1",
+      role: "user",
+      parts: [{ type: "text", text: "What is HiPEAC?" }],
+    };
+
+    // First request: history is just the first turn.
+    await classifyRequestScope([firstTurn], "test-api-key");
+    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+
+    // Second request: client resends the full history plus a new turn, as the
+    // AI SDK does by default. The already-classified first turn must be a
+    // cache hit, so only the new turn triggers an LLM call.
+    const secondTurn = {
+      id: "msg-2",
+      role: "user",
+      parts: [{ type: "text", text: "Tell me more." }],
+    };
+    await classifyRequestScope([firstTurn, secondTurn], "test-api-key");
+
+    expect(mockGenerateObject).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not call generateObject a second time within the same request", async () => {
+    const mockGenerateObject = vi.mocked(generateObject);
+    mockGenerateObject.mockResolvedValue({
+      object: { classification: "in-scope", confidence: 0.95, reason: "HiPEAC-related request" },
+    } as any);
+
+    const messages = [
+      { id: "msg-1", role: "user", parts: [{ type: "text", text: "What is HiPEAC?" }] },
+    ];
+
+    // chat.post.ts calls both classifyRequestScope and
+    // sanitizeConversationForGeneration on the same message history.
+    await classifyRequestScope(messages, "test-api-key");
+    await sanitizeConversationForGeneration(messages, "test-api-key");
+
+    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
   });
 });

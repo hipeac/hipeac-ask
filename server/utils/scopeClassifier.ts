@@ -88,6 +88,12 @@ export async function sanitizeConversationForGeneration(
   return sanitized;
 }
 
+// Classifications are cached per message ID across requests: the client resends
+// the full history on every turn (AI SDK default), so without this cache every
+// historical user turn gets reclassified — with an LLM call each — on every
+// single new message, growing the per-request cost with conversation length.
+export const classificationCache = new Map<string, ScopeClassification>();
+
 async function classifyUserTurnsInOrder(
   messages: unknown[],
   apiKey: string,
@@ -106,7 +112,12 @@ async function classifyUserTurnsInOrder(
       continue;
     }
 
-    const classification = await classifyUserText(text, openai, priorInScopeContext);
+    const cacheKey = getMessageId(message);
+    const cached = cacheKey ? classificationCache.get(cacheKey) : undefined;
+    const classification = cached ?? (await classifyUserText(text, openai, priorInScopeContext));
+    if (cacheKey && !cached) {
+      classificationCache.set(cacheKey, classification);
+    }
     classifications.push({ text, classification });
 
     if (classification.classification === "in-scope") {
@@ -156,6 +167,11 @@ async function classifyUserText(
 
 function getMessageRole(message: unknown): string | undefined {
   return (message as { role?: string })?.role;
+}
+
+function getMessageId(message: unknown): string | undefined {
+  const id = (message as { id?: unknown })?.id;
+  return typeof id === "string" && id ? id : undefined;
 }
 
 function extractUserTextFromMessage(message: unknown): string {
