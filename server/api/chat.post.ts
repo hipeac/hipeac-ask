@@ -25,6 +25,7 @@ import {
   resolveTopicDefinition,
   shouldUseParallelToolCalls,
 } from "../utils/chatRuntimePolicy";
+import { resolvePersonaSystem } from "../utils/personaResolver";
 import { classifyRequestScope, sanitizeConversationForGeneration } from "../utils/scopeClassifier";
 import { validateAuthToken } from "../utils/validateAuthToken";
 import { BASE_SYSTEM_PROMPT } from "../../shared/personas";
@@ -59,30 +60,7 @@ export default defineLazyEventHandler(async () => {
 
   // Persona system prompts cached in process memory for the lifetime of the server.
   // Cleared on redeploy. Falls back to BASE_SYSTEM_PROMPT if Django is unreachable.
-  interface DbPersona {
-    code: string;
-    system_prompt: string;
-  }
   const personaSystemCache = new Map<string, string>();
-
-  async function resolvePersonaSystem(personaCode: string): Promise<string> {
-    if (personaSystemCache.has(personaCode)) {
-      return personaSystemCache.get(personaCode)!;
-    }
-    try {
-      const list = await $fetch<DbPersona[]>(`${config.hipeacApiUrl}chat/personas/`, {
-        timeout: PERSONA_FETCH_TIMEOUT_MS,
-      });
-      for (const p of list) {
-        if (p.system_prompt) {
-          personaSystemCache.set(p.code, `${p.system_prompt}\n\n${BASE_SYSTEM_PROMPT}`);
-        }
-      }
-    } catch {
-      // Django unreachable — fall back to base prompt for this request.
-    }
-    return personaSystemCache.get(personaCode) ?? BASE_SYSTEM_PROMPT;
-  }
 
   return defineEventHandler(async (event) => {
     // --- Auth ---
@@ -143,7 +121,15 @@ export default defineLazyEventHandler(async () => {
       });
     }
 
-    const personaSystem = persona ? await resolvePersonaSystem(persona) : BASE_SYSTEM_PROMPT;
+    const personaSystem = persona
+      ? await resolvePersonaSystem({
+          cache: personaSystemCache,
+          personaCode: persona,
+          hipeacApiUrl: config.hipeacApiUrl,
+          timeoutMs: PERSONA_FETCH_TIMEOUT_MS,
+          baseSystemPrompt: BASE_SYSTEM_PROMPT,
+        })
+      : BASE_SYSTEM_PROMPT;
 
     const sanitizedMessages = await sanitizeConversationForGeneration(
       messages,
