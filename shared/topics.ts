@@ -88,6 +88,29 @@ export const TOPICS: Topic[] = [
     ],
     disabled: true,
   },
+  {
+    key: "jobs",
+    label: "Jobs",
+    description: "Open positions posted by HiPEAC member institutions.",
+    // Heroicons: Briefcase
+    iconPaths: [
+      "M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0M12 12.75h.008v.008H12v-.008z",
+    ],
+    tools: ["search_jobs", "get_job", "get_metadata"],
+    model: "gpt-5-nano",
+    constraint:
+      "Answer questions about HiPEAC job postings — open positions at member institutions. " +
+      "Call get_metadata ONCE to get the full list of employment types, career levels, topics, and application areas with their numeric IDs; do not call it again. " +
+      "Match the user's request to the relevant employment_type_id, career_level_ids, or topic_ids and pass them to search_jobs — do NOT put research areas or job types in the query parameter. " +
+      "The query parameter searches job title, description, location, and institution name only. " +
+      "By default only active (non-expired) jobs are returned; only pass include_expired=true if the user explicitly asks about past or closed positions. " +
+      "If results are empty, suggest related filters from the metadata list and offer to search again.",
+    examples: [
+      "What PhD positions are open in RISC-V research?",
+      "Are there any internships at Barcelona Supercomputing Center?",
+      "Show me postdoc positions in the Netherlands.",
+    ],
+  },
 ];
 
 export const DEFAULT_TOPIC_KEY = "vision";
