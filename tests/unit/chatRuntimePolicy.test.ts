@@ -4,9 +4,11 @@ import {
   buildSystemPrompt,
   EXECUTION_BUDGET_PROMPT,
   extractTokenFromAuthorizationHeader,
+  forceFinalStepToText,
   resolveModelAndConstraint,
   resolveTopicDefinition,
   shouldUseParallelToolCalls,
+  TOOL_STEP_BUDGET,
 } from "../../server/utils/chatRuntimePolicy";
 
 describe("chatRuntimePolicy", () => {
@@ -62,5 +64,22 @@ describe("chatRuntimePolicy", () => {
   it("disables parallel tool calls for network topic only", () => {
     expect(shouldUseParallelToolCalls("network")).toBe(false);
     expect(shouldUseParallelToolCalls("vision")).toBe(true);
+  });
+
+  describe("forceFinalStepToText", () => {
+    // Regression: hitting stopWhen's step cap while the model still wants to
+    // call a tool used to produce finishReason "tool-calls" with empty text —
+    // a silent, answer-less response. Verified live against the real `ai`
+    // package that stepNumber is 0-indexed and forcing toolChoice: "none" on
+    // the last budgeted step reliably produces a real final answer instead.
+    it("only disables tools on the last step of the budget", () => {
+      for (let step = 0; step < TOOL_STEP_BUDGET - 1; step++) {
+        expect(forceFinalStepToText(step)).toBeUndefined();
+      }
+    });
+
+    it("forces toolChoice none on the final budgeted step", () => {
+      expect(forceFinalStepToText(TOOL_STEP_BUDGET - 1)).toEqual({ toolChoice: "none" });
+    });
   });
 });

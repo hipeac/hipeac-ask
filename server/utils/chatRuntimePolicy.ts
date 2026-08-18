@@ -1,8 +1,19 @@
 import { DEFAULT_TOPIC_KEY, TOPICS, type Topic } from "../../shared/topics";
 
+/**
+ * Hard cap on tool/reasoning steps per request, enforced by streamText's
+ * `stopWhen: stepCountIs(TOOL_STEP_BUDGET)`. The model is also told about
+ * this budget in EXECUTION_BUDGET_PROMPT, but that's a soft instruction —
+ * the model doesn't reliably self-count and can still be mid-tool-call when
+ * the hard cutoff hits, which previously produced a silent empty response
+ * (finishReason "tool-calls" with no text). `forceFinalStepToText` below
+ * closes that gap by forcing the last budgeted step to be tool-free.
+ */
+export const TOOL_STEP_BUDGET = 6;
+
 export const EXECUTION_BUDGET_PROMPT =
-  "\n\nExecution budget: you have at most 6 reasoning/tool steps in total. " +
-  "If you already performed 5 steps, stop calling tools and provide the best possible final answer to the user.";
+  `\n\nExecution budget: you have at most ${TOOL_STEP_BUDGET} reasoning/tool steps in total. ` +
+  `If you already performed ${TOOL_STEP_BUDGET - 1} steps, stop calling tools and provide the best possible final answer to the user.`;
 
 export const FOLLOW_UP_ACTIONS_PROMPT =
   "\n\nWhen useful, end your answer with a short section exactly titled 'Follow-up actions:' " +
@@ -55,4 +66,17 @@ export function buildSystemPrompt(personaSystem: string, constraint: string): st
 
 export function shouldUseParallelToolCalls(topicKey: string): boolean {
   return topicKey !== "network";
+}
+
+/**
+ * streamText's prepareStep hook: on the last step allowed by TOOL_STEP_BUDGET,
+ * disable tools so the model must respond with text instead of another tool
+ * call, guaranteeing the user gets an answer instead of a silent empty
+ * response when stopWhen's step cap is hit mid-tool-call.
+ *
+ * `stepNumber` is 0-indexed (the step about to run), confirmed against the
+ * `ai` package directly: with a budget of N, valid stepNumbers are 0..N-1.
+ */
+export function forceFinalStepToText(stepNumber: number): { toolChoice: "none" } | undefined {
+  return stepNumber === TOOL_STEP_BUDGET - 1 ? { toolChoice: "none" } : undefined;
 }

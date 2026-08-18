@@ -21,9 +21,11 @@ import { ChatRequestBodySchema } from "../utils/chatRequestBody";
 import {
   buildSystemPrompt,
   extractTokenFromAuthorizationHeader,
+  forceFinalStepToText,
   resolveModelAndConstraint,
   resolveTopicDefinition,
   shouldUseParallelToolCalls,
+  TOOL_STEP_BUDGET,
 } from "../utils/chatRuntimePolicy";
 import { resolvePersonaSystem } from "../utils/personaResolver";
 import { classifyRequestScope, sanitizeConversationForGeneration } from "../utils/scopeClassifier";
@@ -149,7 +151,8 @@ export default defineLazyEventHandler(async () => {
       system,
       messages: await convertToModelMessages(sanitizedMessages),
       tools,
-      stopWhen: stepCountIs(6),
+      stopWhen: stepCountIs(TOOL_STEP_BUDGET),
+      prepareStep: ({ stepNumber }) => forceFinalStepToText(stepNumber),
       providerOptions: { openai: { parallelToolCalls } },
       onStepFinish: (step) => {
         if (import.meta.dev) {
