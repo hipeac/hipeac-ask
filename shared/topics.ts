@@ -79,14 +79,14 @@ export const TOPICS: Topic[] = [
     model: "gpt-5-nano",
     constraint:
       "Answer questions about HiPEAC events — conferences, workshops, and summer schools. " +
-      "Use get_events to list upcoming events and search_event for questions about a specific event.",
+      "Use get_events to list upcoming events and search_event for questions about a specific event. " +
+      "Pass event_type ('conference' or 'acaces') or year to get_events when the user asks about a specific kind of event or a specific year.",
     examples: [
       "What are the upcoming HiPEAC events?",
       "Tell me about ACACES 2026.",
       "When and where is the next HiPEAC conference?",
       "What workshops are organised this year?",
     ],
-    disabled: true,
   },
   {
     key: "jobs",
