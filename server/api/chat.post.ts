@@ -49,6 +49,8 @@ export default defineLazyEventHandler(async () => {
   // MCP client shared across requests — tool schemas discovered once at startup.
   const mcpClient = await createMCPClient({
     transport: { type: "http", url: config.mcpServerUrl },
+    name: "hipeac-ask",
+    version: "0.1.0",
   });
   const allTools = await mcpClient.tools();
 
